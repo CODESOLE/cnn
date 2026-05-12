@@ -1,5 +1,4 @@
 #include "nn.h"
-#include <gsl/gsl_blas_types.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stddef.h>
