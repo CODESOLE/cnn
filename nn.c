@@ -76,7 +76,7 @@ struct NNData *nninit(float learn_rate, int layer_count, ...) {
   return nn;
 }
 
-#if 1
+#if 0
 static inline float activation_fn(float x) { // ReLU
   return fmaxf(0.f, x);
 }
