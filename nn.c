@@ -20,11 +20,8 @@
 #endif
 
 #define OUTPUT_VECTOR_SIZE 10
-#define RNG 2
-
-static inline float get_rand_uniform(const unsigned int n) {
-  const float range = (float)(RAND_MAX % n);
-  return (float)(rand() % n) - (range / 2.f);
+static inline float uniform_xavier_initialization(const size_t n_input_layer, const size_t n_output_layer) {
+  return 2.f * (((float)rand() / (float)RAND_MAX) - 0.5f) * sqrtf(6.f / (n_input_layer + n_output_layer));
 }
 
 struct NNData *nninit(float learn_rate, int layer_count, ...) {
@@ -44,7 +41,7 @@ struct NNData *nninit(float learn_rate, int layer_count, ...) {
       l[i].neuron_sz = neuron_counts;
       l[i].n = malloc(sizeof(struct Neuron) * neuron_counts);
       for (size_t j = 0; j < l[i].neuron_sz; ++j) {
-        l[i].n[j].a = get_rand_uniform(RNG);
+        l[i].n[j].a = 0.f;
         l[i].n[j].w = NULL;
         l[i].n[j].b = 0.f;
       }
@@ -56,17 +53,18 @@ struct NNData *nninit(float learn_rate, int layer_count, ...) {
       total_biases += neuron_counts;
       total_weights += prev_neuron_count * neuron_counts;
       for (size_t j = 0; j < l[i].neuron_sz; ++j) {
-        l[i].n[j].a = get_rand_uniform(RNG);
-        l[i].n[j].b = get_rand_uniform(RNG);
+        l[i].n[j].a = 0.f;
+        l[i].n[j].b = 0.f;
         l[i].n[j].w = malloc(prev_neuron_count * sizeof(float));
-        for (size_t k = 0; k < prev_neuron_count; ++k) {
-          l[i].n[j].w[k] = get_rand_uniform(RNG);
-        }
       }
       prev_neuron_count = neuron_counts;
     }
   }
   va_end(args);
+  for (size_t i = 1; i < layer_count; ++i)
+    for (size_t j = 0; j < l[i].neuron_sz; ++j)
+      for (size_t k = 0; k < l[i - 1].neuron_sz; ++k)
+        l[i].n[j].w[k] = uniform_xavier_initialization(l[0].neuron_sz, l[nn->layer_sz - 1].neuron_sz);
   nn->total_w = total_weights;
   nn->total_b = total_biases;
   nn->gradient = malloc((total_weights + total_biases) * sizeof(float));
@@ -94,7 +92,6 @@ static inline float deriv_activation_fn(float x) {
 static float dC0_da(struct NNData *nn, float output_vector[OUTPUT_VECTOR_SIZE], size_t layer_idx, size_t neuron_idx) {
   assert(layer_idx < nn->layer_sz && "Given layer_idx exceeds NN total layer size");
   if (layer_idx == nn->layer_sz - 1) { // last layer 2(a_i - y_i)
-    if (neuron_idx >= nn->layers[layer_idx].neuron_sz) DEBUG_BREAK();
     assert(neuron_idx < nn->layers[layer_idx].neuron_sz && "Given neuron_idx exceeds last layer neuron size");
     return 2.f * (nn->layers[layer_idx].n[neuron_idx].a - output_vector[neuron_idx]);
   } else { // hidden layers
@@ -181,18 +178,29 @@ void backpropagation(struct NNData *nn, float expected) {
     dC0_dw(nn, output_vector, i);
   for (size_t i = nn->layer_sz - 1; i >= 1; i--)
     dC0_db(nn, output_vector, i);
+
   nn->curr_w = 0;
+
+  float sum = 0.f;
+  for (size_t i = 0; i < (nn->total_b + nn->total_w); ++i) {
+    sum += nn->gradient[i] * nn->gradient[i];
+  }
+  float glob_norm = sqrtf(sum);
+  float scale_factor = 1.f / fmaxf(glob_norm, 1.f);
+  
   for (size_t i = nn->layer_sz - 1; i >= 1; --i) { // C(w) -= VC(w)
     for (size_t j = 0; j < nn->layers[i].neuron_sz; ++j) {
       for (size_t k = 0; k < nn->layers[i - 1].neuron_sz; ++k) {
-        nn->layers[i].n[j].w[k] -= nn->learn_rate * nn->gradient[nn->curr_w++];
+        float clip = scale_factor * nn->gradient[nn->curr_w++];
+        nn->layers[i].n[j].w[k] -= nn->learn_rate * clip;
       }
     }
   }
   nn->curr_b = 0;
   for (size_t i = nn->layer_sz - 1; i >= 1; --i) { // C(b) -= VC(b)
     for (size_t j = 0; j < nn->layers[i].neuron_sz; ++j) {
-        nn->layers[i].n[j].b -= nn->learn_rate * nn->gradient[nn->total_w + nn->curr_b++];
+      float clip = scale_factor * nn->gradient[nn->total_w + nn->curr_b++];
+      nn->layers[i].n[j].b -= nn->learn_rate * clip;
     }
   }
 }
@@ -250,11 +258,6 @@ struct NNData *load_model(const char *fname, float learn_rate) {
       fread(&neuron_counts, sizeof(size_t), 1, fp);
       l[i].neuron_sz = neuron_counts;
       l[i].n = malloc(sizeof(struct Neuron) * neuron_counts);
-      for (size_t j = 0; j < l[i].neuron_sz; ++j) {
-        l[i].n[j].a = get_rand_uniform(RNG);
-        l[i].n[j].w = NULL;
-        l[i].n[j].b = 0.f;
-      }
       prev_neuron_count = neuron_counts;
     } else {
       fread(&neuron_counts, sizeof(size_t), 1, fp);
@@ -263,12 +266,7 @@ struct NNData *load_model(const char *fname, float learn_rate) {
       total_biases += neuron_counts;
       total_weights += prev_neuron_count * neuron_counts;
       for (size_t j = 0; j < l[i].neuron_sz; ++j) {
-        l[i].n[j].a = get_rand_uniform(RNG);
-        l[i].n[j].b = get_rand_uniform(RNG);
         l[i].n[j].w = malloc(prev_neuron_count * sizeof(float));
-        for (size_t k = 0; k < prev_neuron_count; ++k) {
-          l[i].n[j].w[k] = get_rand_uniform(RNG);
-        }
       }
       prev_neuron_count = neuron_counts;
     }
