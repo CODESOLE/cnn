@@ -7,6 +7,10 @@
 *.obj
 *.elf
 
+*.csv
+cnn
+.gdb_history
+
 # Linker output
 *.ilk
 *.map
