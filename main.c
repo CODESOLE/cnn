@@ -47,9 +47,15 @@ cc_vec(float) parse_file(const char *path) {
 }
 
 int main(int argc, char **argv) {
-  assert(argc == 3  && "program should run with either: cnn.out <train_data.csv> <model_paramaters_save_ouput.bin> or cnn.out <test.csv> <model_input_paramater.bin>");
-  if (strncmp(argv[1] + strlen(argv[1]) - 4, ".bin", strlen(".bin")) == 0) { // test mode: cnn.out <model.bin> <test_data.csv>
-    double avgcost = 0.0;
+  if (argc != 3) {
+    fprintf(stderr,
+            "Program should be run with either: cnn.out <train_data.csv> "
+            "<model_paramaters_save_ouput.bin> or cnn.out <test.csv> "
+            "<model_input_paramater.bin>");
+    exit(1);
+  }
+  if (strncmp(argv[1] + strlen(argv[1]) - 4, ".bin", strlen(".bin")) == 0) {
+	double avgcost = 0.0;
     struct NNData *nn = load_model(argv[1], 1.f);
     cc_vec(float) test_dataset = parse_file(argv[2]);
     size_t test_dataset_sz = cc_size(&test_dataset);
@@ -76,9 +82,9 @@ int main(int argc, char **argv) {
 
     cc_cleanup(&test_dataset);
     nndeinit(nn);
-  } else { // learn mode: cnn.out <train_data.csv> <model_output_paramater.bin>
+  } else {
     srand(time(NULL));
-    struct NNData *nn = nninit(1.f, 4, 784, 16, 16, 10);
+    struct NNData *nn = nninit(1e-3, 4, 784, 16, 16, 10);
     cc_vec(float) train_dataset = parse_file(argv[1]);
     size_t train_dataset_sz = cc_size(&train_dataset);
     size_t train_dataset_count = train_dataset_sz / 785;
@@ -93,7 +99,7 @@ int main(int argc, char **argv) {
     }
     printf("\n\n==========TRANING DONE==========\n\n");
     save_model(nn, argv[2]);
-    printf("\n\n==========MODEL PARAMATERS WRITTEN DISK==========\n\n");
+    printf("\n\n==========MODEL PARAMATERS WRITTEN TO DISK==========\n\n");
     /* printf("Avg Cost of NN: %g\n", avgcost / (double)train_dataset_count); */
 
     cc_cleanup(&train_dataset);
